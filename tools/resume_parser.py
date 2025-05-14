@@ -1,5 +1,3 @@
-# Fix for tools/resume_parser.py
-
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
 from pathlib import Path
@@ -21,6 +19,10 @@ class ResumeProcessInput(BaseModel):
 def process_resume_pdf(params: Dict[str, Any]) -> Dict[str, Any]:
     """Parse resume PDF and extract text content with optional metadata"""
     try:
+        # FIX: Extract parameters from the nested params dictionary if provided
+        if "params" in params:
+            params = params["params"]
+            
         path = Path(params["file_path"])
         if not path.exists():
             log_error("File not found", path=str(path))
@@ -71,6 +73,10 @@ class BatchProcessInput(BaseModel):
 def batch_process_resume_folder(params: Dict[str, Any]) -> Dict[str, Any]:
     """Batch process resumes with progress tracking and error handling"""
     try:
+        # FIX: Extract parameters from the nested params dictionary if provided
+        if "params" in params:
+            params = params["params"]
+            
         folder = Path(params["folder_path"])
         if not folder.exists():
             log_error("Folder not found", path=str(folder))
@@ -89,8 +95,10 @@ def batch_process_resume_folder(params: Dict[str, Any]) -> Dict[str, Any]:
         for i, pdf_file in enumerate(pdf_files):
             try:
                 result = process_resume_pdf({
-                    "file_path": str(pdf_file),
-                    "extract_metadata": True
+                    "params": {  # FIX: Use proper nested params format
+                        "file_path": str(pdf_file),
+                        "extract_metadata": True
+                    }
                 })
                 
                 if result["status"] == "success":

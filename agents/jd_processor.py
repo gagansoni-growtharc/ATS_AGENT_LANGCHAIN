@@ -1,4 +1,3 @@
-# Fix for agents/jd_processor.py
 from .base import OpenAIAgent
 from tools.jd_parser import parse_job_description_content
 from schemas.jd import JDParsingInput
@@ -94,11 +93,15 @@ class JDProcessor(OpenAIAgent):
                 with open(jd_path, "r", encoding="latin-1") as f:
                     jd_content = f.read()
                 
-            # Fix: use invoke method with properly named parameters matching the tool's schema
-            parsed = parse_job_description_content.invoke({
-                "jd_content": jd_content,
-                "parse_mode": "full"
-            })
+            # FIX: Create proper input object for parse_job_description_content
+            input_obj = {
+                "params": {  # Pass parameters through a params dictionary
+                    "jd_content": jd_content,
+                    "parse_mode": "full"
+                }
+            }
+            
+            parsed = parse_job_description_content.invoke(input_obj)
             
             return AgentState(
                 **state.model_dump(),

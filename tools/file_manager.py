@@ -1,5 +1,3 @@
-# Fix for tools/file_manager.py - move_filtered_resumes function
-
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
 from pathlib import Path
@@ -11,13 +9,21 @@ from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
-# This is the corrected version of the move_filtered_resumes function
-# It now accepts a dictionary rather than expecting a FileMoveInput object
+class FileMoveInput(BaseModel):
+    """Schema for move_filtered_resumes input parameters"""
+    source: str = Field(..., description="Source file path")
+    dest: str = Field(..., description="Destination directory")
+    score: float = Field(..., description="Resume score")
+    create_dirs: bool = Field(default=True, description="Create directories if needed")
 
-@tool
+@tool(args_schema=FileMoveInput)
 def move_filtered_resumes(params: Dict[str, Any]) -> Dict[str, Any]:
     """Move resumes with score-based filename to destination directory"""
     try:
+        # FIX: Extract parameters from the nested params dictionary if provided
+        if "params" in params:
+            params = params["params"]
+            
         source_path = Path(params["source"])
         dest_dir = Path(params["dest"])
         score = params["score"]

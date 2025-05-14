@@ -1,5 +1,3 @@
-# Fix for agents/coordinator.py
-
 from .base import OpenAIAgent
 from schemas.base import AgentState
 from tools.file_manager import move_filtered_resumes
@@ -74,7 +72,6 @@ class Coordinator(OpenAIAgent):
             if not state.jd_content or not state.resumes:
                 logger.error("Missing required data for coordination")
                 # Initialize with empty scores to prevent AttributeError later
-                # Fix: Create a proper copy of the state and add scores
                 state_dict = state.model_dump()
                 state_dict["scores"] = {}  # Add empty scores dict
                 return AgentState(**state_dict)
@@ -99,7 +96,6 @@ class Coordinator(OpenAIAgent):
                     self._move_qualified_resume(resume.file_path, score, output_dir)
 
             # Build updated state with scores in both places
-            # Fix: Create a properly structured copy avoiding double-scores
             state_dict = state.model_dump()
             state_dict["scores"] = scores_dict  # Add scores dict
             state_dict["metadata"] = {
@@ -111,7 +107,6 @@ class Coordinator(OpenAIAgent):
         except Exception as e:
             logger.error(f"Coordination failed: {str(e)}")
             # Return state with empty scores to prevent AttributeError
-            # Fix: Create a proper copy of the state and add scores
             state_dict = state.model_dump()
             state_dict["scores"] = {}  # Add empty scores dict
             return AgentState(**state_dict)
@@ -157,10 +152,13 @@ class Coordinator(OpenAIAgent):
     def _move_qualified_resume(self, file_path: str, score: float, output_dir: str = "filtered_resumes"):
         """Move qualified resume to filtered directory"""
         try:
+            # FIX: Use proper parameter format for move_filtered_resumes
             move_filtered_resumes.invoke({
-                "source": file_path,
-                "dest": output_dir,
-                "score": score
+                "params": {  # Wrap parameters in a params dictionary
+                    "source": file_path,
+                    "dest": output_dir,
+                    "score": score
+                }
             })
         except Exception as e:
             logger.error(f"Failed to move resume {file_path}: {str(e)}")

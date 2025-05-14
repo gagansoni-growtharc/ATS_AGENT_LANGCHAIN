@@ -1,5 +1,3 @@
-# Fix for agents/resume_processor.py
-
 from langchain.prompts import PromptTemplate
 from langchain.agents import Tool
 from typing import List, Dict, Any
@@ -97,11 +95,13 @@ class ResumeProcessor(OpenAIAgent):
                 "agent_scratchpad": ""
             })
             
-            # Get the batch processing result - Fix parameter name to match schema
-            batch_result = batch_process_resume_folder({
-                "folder_path": resume_folder,  # Proper parameter name
-                "extension": "pdf",
-                "batch_size": 100
+            # FIX: Use proper parameter format for batch_process_resume_folder
+            batch_result = batch_process_resume_folder.invoke({
+                "params": {  # Wrap parameters in a params dictionary
+                    "folder_path": resume_folder,
+                    "extension": "pdf",
+                    "batch_size": 100
+                }
             })
             
             # Process each resume individually to ensure proper extraction
@@ -109,10 +109,12 @@ class ResumeProcessor(OpenAIAgent):
             if batch_result.get("status") == "success":
                 for file_info in batch_result.get("sample_content", []):
                     file_path = f"{resume_folder}/{file_info['file_name']}"
-                    # Fix parameter name to match tool schema
-                    resume_result = process_resume_pdf({
-                        "file_path": file_path,  # Proper parameter name
-                        "extract_metadata": True
+                    # FIX: Use proper parameter format for process_resume_pdf
+                    resume_result = process_resume_pdf.invoke({
+                        "params": {  # Wrap parameters in a params dictionary
+                            "file_path": file_path,
+                            "extract_metadata": True
+                        }
                     })
                     
                     if resume_result.get("status") == "success":
