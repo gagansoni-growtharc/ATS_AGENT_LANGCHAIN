@@ -1,3 +1,5 @@
+# Fix for tools/resume_parser.py
+
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
 from pathlib import Path
@@ -16,10 +18,10 @@ class ResumeProcessInput(BaseModel):
     )
 
 @tool(args_schema=ResumeProcessInput)
-def process_resume_pdf(params: ResumeProcessInput) -> Dict[str, Any]:
+def process_resume_pdf(params: Dict[str, Any]) -> Dict[str, Any]:
     """Parse resume PDF and extract text content with optional metadata"""
     try:
-        path = Path(params.file_path)
+        path = Path(params["file_path"])
         if not path.exists():
             log_error("File not found", path=str(path))
             return {"status": "error", "message": "File not found"}
@@ -33,7 +35,7 @@ def process_resume_pdf(params: ResumeProcessInput) -> Dict[str, Any]:
             text = "\n".join([page.get_text() for page in doc])
             metadata = {}
             
-            if params.extract_metadata:
+            if params.get("extract_metadata", False):
                 metadata = {
                     "author": doc.metadata.get("author", ""),
                     "title": doc.metadata.get("title", ""),
@@ -50,7 +52,7 @@ def process_resume_pdf(params: ResumeProcessInput) -> Dict[str, Any]:
         }
         
     except Exception as e:
-        log_error("PDF processing failed", path=str(path), error=str(e))
+        log_error("PDF processing failed", error=str(e))
         return {"status": "error", "message": str(e)}
 
 class BatchProcessInput(BaseModel):
@@ -66,21 +68,23 @@ class BatchProcessInput(BaseModel):
     )
 
 @tool(args_schema=BatchProcessInput)
-def batch_process_resume_folder(params: BatchProcessInput) -> Dict[str, Any]:
+def batch_process_resume_folder(params: Dict[str, Any]) -> Dict[str, Any]:
     """Batch process resumes with progress tracking and error handling"""
     try:
-        folder = Path(params.folder_path)
+        folder = Path(params["folder_path"])
         if not folder.exists():
             log_error("Folder not found", path=str(folder))
             return {"status": "error", "message": "Folder not found"}
             
-        pdf_files = list(folder.glob(f"*.{params.extension}"))
+        pdf_files = list(folder.glob(f"*.{params.get('extension', 'pdf')}"))
         if not pdf_files:
             log_warn("No PDF files found", path=str(folder))
             return {"status": "error", "message": "No PDF files found"}
 
         processed = []
         errors = []
+        
+        batch_size = params.get("batch_size", 100)
         
         for i, pdf_file in enumerate(pdf_files):
             try:
@@ -102,7 +106,7 @@ def batch_process_resume_folder(params: BatchProcessInput) -> Dict[str, Any]:
                     })
                     
                 # Batch processing control
-                if (i+1) % params.batch_size == 0:
+                if (i+1) % batch_size == 0:
                     log_debug(f"Processed {i+1}/{len(pdf_files)} files")
 
             except Exception as e:

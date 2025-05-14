@@ -1,3 +1,5 @@
+# Fix for agents/coordinator.py
+
 from .base import OpenAIAgent
 from schemas.base import AgentState
 from tools.file_manager import move_filtered_resumes
@@ -72,10 +74,10 @@ class Coordinator(OpenAIAgent):
             if not state.jd_content or not state.resumes:
                 logger.error("Missing required data for coordination")
                 # Initialize with empty scores to prevent AttributeError later
-                return AgentState(
-                    **state.model_dump(),
-                    scores={}
-                )
+                # Fix: Create a proper copy of the state and add scores
+                state_dict = state.model_dump()
+                state_dict["scores"] = {}  # Add empty scores dict
+                return AgentState(**state_dict)
 
             # Score resumes using LLM evaluation
             scored_resumes = []
@@ -97,22 +99,22 @@ class Coordinator(OpenAIAgent):
                     self._move_qualified_resume(resume.file_path, score, output_dir)
 
             # Build updated state with scores in both places
-            return AgentState(
-                **state.model_dump(),
-                scores=scores_dict,  # This ensures scores is a proper dictionary
-                metadata={
-                    **state.metadata,
-                    "scoring_results": scored_resumes
-                }
-            )
+            # Fix: Create a properly structured copy avoiding double-scores
+            state_dict = state.model_dump()
+            state_dict["scores"] = scores_dict  # Add scores dict
+            state_dict["metadata"] = {
+                **state.metadata,
+                "scoring_results": scored_resumes
+            }
+            return AgentState(**state_dict)
 
         except Exception as e:
             logger.error(f"Coordination failed: {str(e)}")
             # Return state with empty scores to prevent AttributeError
-            return AgentState(
-                **state.model_dump(),
-                scores={}
-            )
+            # Fix: Create a proper copy of the state and add scores
+            state_dict = state.model_dump()
+            state_dict["scores"] = {}  # Add empty scores dict
+            return AgentState(**state_dict)
 
     def _calculate_score(self, resume, jd_content: str) -> float:
         """Calculate resume score using LLM evaluation"""
