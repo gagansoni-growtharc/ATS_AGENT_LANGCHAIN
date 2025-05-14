@@ -7,7 +7,7 @@ from pathlib import Path
 from langchain_groq import ChatGroq
 from langchain.prompts import PromptTemplate
 from langchain.chains.llm import LLMChain
-from langchain.agents.output_parsers import JSONAgentOutputParser  # Added import
+from langchain.agents.output_parsers import JSONAgentOutputParser
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class Coordinator(OpenAIAgent):
         # Initialize LLM chain
         llm_chain = LLMChain(llm=llm, prompt=prompt)
         
-        # Create output parser - Add this missing part
+        # Create output parser
         output_parser = JSONAgentOutputParser()
         
         # Call parent constructor
@@ -34,7 +34,7 @@ class Coordinator(OpenAIAgent):
             llm_chain=llm_chain,
             allowed_tools=[tool.name for tool in tools],
             tools=tools,
-            output_parser=output_parser  # Add this parameter
+            output_parser=output_parser
         )
         
         # Store LLM for direct usage
@@ -71,12 +71,20 @@ class Coordinator(OpenAIAgent):
         try:
             if not state.jd_content or not state.resumes:
                 logger.error("Missing required data for coordination")
-                return state
+                # Initialize with empty scores to prevent AttributeError later
+                return AgentState(
+                    **state.model_dump(),
+                    scores={}
+                )
 
             # Score resumes using LLM evaluation
             scored_resumes = []
+            scores_dict = {}  # Separate dictionary for final scores
+            
             for resume in state.resumes:
                 score = self._calculate_score(resume, state.jd_content)
+                scores_dict[resume.file_path] = score  # Add to scores dictionary
+                
                 scored_resumes.append({
                     "file_path": resume.file_path,
                     "score": score,
@@ -88,9 +96,10 @@ class Coordinator(OpenAIAgent):
                     output_dir = state.metadata.get("output_dir", "filtered_resumes")
                     self._move_qualified_resume(resume.file_path, score, output_dir)
 
+            # Build updated state with scores in both places
             return AgentState(
                 **state.model_dump(),
-                scores={r["file_path"]: r["score"] for r in scored_resumes},
+                scores=scores_dict,  # This ensures scores is a proper dictionary
                 metadata={
                     **state.metadata,
                     "scoring_results": scored_resumes
@@ -99,7 +108,11 @@ class Coordinator(OpenAIAgent):
 
         except Exception as e:
             logger.error(f"Coordination failed: {str(e)}")
-            return state
+            # Return state with empty scores to prevent AttributeError
+            return AgentState(
+                **state.model_dump(),
+                scores={}
+            )
 
     def _calculate_score(self, resume, jd_content: str) -> float:
         """Calculate resume score using LLM evaluation"""

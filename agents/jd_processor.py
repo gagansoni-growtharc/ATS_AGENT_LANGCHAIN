@@ -3,10 +3,12 @@ from tools.jd_parser import parse_job_description_content
 from schemas.jd import JDParsingInput
 from schemas.base import AgentState
 import logging
+import fitz  # PyMuPDF for PDF handling
+from pathlib import Path
 from langchain_groq import ChatGroq
 from langchain.prompts import PromptTemplate
 from langchain.chains.llm import LLMChain
-from langchain.agents.output_parsers import JSONAgentOutputParser  # Added import
+from langchain.agents.output_parsers import JSONAgentOutputParser
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +26,7 @@ class JDProcessor(OpenAIAgent):
         # Initialize LLM chain
         llm_chain = LLMChain(llm=llm, prompt=prompt)
         
-        # Create output parser - Added this line
+        # Create output parser
         output_parser = JSONAgentOutputParser()
         
         # Call parent constructor
@@ -32,7 +34,7 @@ class JDProcessor(OpenAIAgent):
             llm_chain=llm_chain,
             allowed_tools=[tool.name for tool in tools],
             tools=tools,
-            output_parser=output_parser  # Added this parameter
+            output_parser=output_parser
         )
         
     def create_prompt(self, tools) -> PromptTemplate:
@@ -73,8 +75,23 @@ class JDProcessor(OpenAIAgent):
     def process(self, state: AgentState) -> AgentState:
         try:
             jd_path = state.metadata.get("jd_path")
-            with open(jd_path, "r") as f:
-                jd_content = f.read()
+            
+            # Use PyMuPDF (fitz) to reliably extract text from PDF
+            try:
+                if jd_path.lower().endswith('.pdf'):
+                    # Handle PDF files with PyMuPDF
+                    with fitz.open(jd_path) as doc:
+                        jd_content = ""
+                        for page in doc:
+                            jd_content += page.get_text()
+                else:
+                    # Handle text files with UTF-8 encoding
+                    with open(jd_path, "r", encoding="utf-8") as f:
+                        jd_content = f.read()
+            except UnicodeDecodeError:
+                # Fall back to latin-1 encoding if UTF-8 fails
+                with open(jd_path, "r", encoding="latin-1") as f:
+                    jd_content = f.read()
                 
             parsed = parse_job_description_content({
                 "jd_content": jd_content,

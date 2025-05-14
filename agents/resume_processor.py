@@ -1,10 +1,10 @@
 from langchain.prompts import PromptTemplate
 from langchain.agents import Tool
-from typing import List
+from typing import List, Dict, Any
 from .base import OpenAIAgent
 from tools.resume_parser import batch_process_resume_folder, process_resume_pdf
 from schemas.base import AgentState
-from schemas.resume import ResumeContent
+from schemas.resume import ResumeContent, ResumeMetadata
 from logger.logger import log_error
 from langchain_groq import ChatGroq
 from langchain.chains.llm import LLMChain
@@ -86,20 +86,41 @@ class ResumeProcessor(OpenAIAgent):
     
     def process(self, state: AgentState) -> AgentState:
         try:
-            result = self.llm_chain.run(
-                input=state.input,
-                tools=self.tools,
-                tool_names=", ".join([t.name for t in self.tools]),
-                agent_scratchpad=""  # Add this required parameter
-            )
+            resume_folder = state.metadata.get("resume_folder")
+            # Update to use invoke() instead of deprecated run()
+            result = self.llm_chain.invoke({
+                "input": f"Process resumes in the folder: {resume_folder}",
+                "tools": self.tools,
+                "tool_names": ", ".join([t.name for t in self.tools]),
+                "agent_scratchpad": ""
+            })
             
-            processed = [
-                ResumeContent(
-                    text=item["content"],
-                    file_path=item["file_path"],
-                    metadata=item.get("metadata")
-                ) for item in result["results"]
-            ]
+            # Get the batch processing result
+            batch_result = batch_process_resume_folder({
+                "folder_path": resume_folder,
+                "extension": "pdf",
+                "batch_size": 100
+            })
+            
+            # Process each resume individually to ensure proper extraction
+            processed = []
+            if batch_result.get("status") == "success":
+                for file_info in batch_result.get("sample_content", []):
+                    file_path = f"{resume_folder}/{file_info['file_name']}"
+                    resume_result = process_resume_pdf({
+                        "file_path": file_path,
+                        "extract_metadata": True
+                    })
+                    
+                    if resume_result.get("status") == "success":
+                        resume_metadata = ResumeMetadata()
+                        processed.append(
+                            ResumeContent(
+                                text=resume_result["content"],
+                                file_path=file_path,
+                                metadata=resume_metadata
+                            )
+                        )
             
             return AgentState(
                 **state.model_dump(),

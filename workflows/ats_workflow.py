@@ -29,4 +29,21 @@ class ATSWorkflow:
         
     def invoke(self, initial_state: AgentState) -> AgentState:
         # Use the compiled workflow for invocation
-        return self.workflow.invoke(initial_state)
+        result = self.workflow.invoke(initial_state)
+        
+        # Convert the result to a proper AgentState if needed
+        if hasattr(result, 'scores'):
+            # Already has scores attribute
+            return result
+        elif hasattr(result, 'values'):
+            # Result is a dictionary-like object, extract the values and create a new AgentState
+            try:
+                final_state = result.values()[-1]  # Get the last state from the workflow
+                return final_state
+            except (IndexError, AttributeError):
+                # If we can't extract values, create a default AgentState
+                log_error("Failed to extract values from workflow result")
+                return AgentState(scores={})
+        else:
+            # Fall back to returning result directly
+            return result
