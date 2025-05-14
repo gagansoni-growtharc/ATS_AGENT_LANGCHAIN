@@ -4,12 +4,60 @@ from tools.file_manager import move_filtered_resumes
 from typing import Dict, Any
 import logging
 from pathlib import Path
+from langchain_openai import ChatOpenAI
+from langchain.prompts import PromptTemplate
+from langchain.chains.llm import LLMChain
 
 logger = logging.getLogger(__name__)
 
 class Coordinator(OpenAIAgent):
     def __init__(self):
-        super().__init__(tools=[move_filtered_resumes])
+        # Initialize LLM
+        llm = ChatOpenAI(model="gpt-4o", temperature=0)
+        
+        # Setup tools
+        tools = [move_filtered_resumes]
+        
+        # Create prompt
+        prompt = self.create_prompt(tools)
+        
+        # Initialize LLM chain
+        llm_chain = LLMChain(llm=llm, prompt=prompt)
+        
+        # Call parent constructor
+        super().__init__(
+            llm_chain=llm_chain,
+            allowed_tools=[tool.name for tool in tools],
+            tools=tools
+        )
+        
+        # Store LLM for direct usage
+        self._llm = llm
+        
+    def create_prompt(self, tools) -> PromptTemplate:
+        return PromptTemplate(
+            template="""
+            You are a resume evaluation assistant. Analyze the resume against the job requirements 
+            and provide a numerical score from 0-100.
+            
+            Job Requirements:
+            {jd_content}
+            
+            Resume:
+            {resume_content}
+            
+            Score (0-100):
+            """,
+            input_variables=["jd_content", "resume_content", "agent_scratchpad"]
+        )
+    
+    @property
+    def llm_prefix(self) -> str:
+        return "Thought:"
+    
+    @property
+    def observation_prefix(self) -> str:
+        return "Observation:"
         
     def process(self, state: AgentState) -> AgentState:
         """Score resumes and move qualified candidates"""
@@ -58,9 +106,12 @@ class Coordinator(OpenAIAgent):
 
             Metadata:
             {resume.metadata.model_dump() if resume.metadata else "No metadata"}
+            
+            On a scale of 0-100, score how well this resume matches the job requirements.
+            Provide only the numerical score.
             """
             
-            response = self.llm.invoke(prompt)
+            response = self._llm.invoke(prompt)
             return self._parse_score_from_response(response.content)
         except Exception as e:
             logger.error(f"Score calculation failed: {str(e)}")
@@ -69,7 +120,14 @@ class Coordinator(OpenAIAgent):
     def _parse_score_from_response(self, response_text: str) -> float:
         """Extract numerical score from LLM response"""
         try:
-            return float(response_text.strip().split()[-1])
+            # Look for any number in the response
+            import re
+            numbers = re.findall(r'\d+', response_text)
+            if numbers:
+                score = float(numbers[0])
+                # Ensure score is within 0-100 range
+                return max(0, min(100, score))
+            return 0.0
         except (IndexError, ValueError):
             logger.warning("Failed to parse score from LLM response")
             return 0.0

@@ -12,8 +12,13 @@ from langchain.agents.output_parsers import JSONAgentOutputParser
 
 class ResumeProcessor(OpenAIAgent):
     def __init__(self):
+        # Initialize the LLM
         llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
+        
+        # Setup tools
         tools = self._setup_tools()
+        
+        # Create the prompt
         prompt = self.create_prompt(tools)
         
         # Create the output parser
@@ -22,12 +27,12 @@ class ResumeProcessor(OpenAIAgent):
         # Initialize the LLM chain
         llm_chain = LLMChain(llm=llm, prompt=prompt)
         
-        # Pass the output_parser to the parent class constructor
+        # Initialize the base class
         super().__init__(
             llm_chain=llm_chain,
             allowed_tools=[t.name for t in tools],
             tools=tools,
-            output_parser=output_parser  # Add the missing output_parser
+            output_parser=output_parser
         )
     
     def _setup_tools(self) -> List[Tool]:
@@ -62,7 +67,7 @@ class ResumeProcessor(OpenAIAgent):
             ... (repeat as needed)
             Final Answer: The processed resume data in JSON format
             """,
-            input_variables=["input", "tools", "tool_names"],
+            input_variables=["input", "tools", "tool_names", "agent_scratchpad"],
             partial_variables={
                 "tools": "\n".join([f"{t.name}: {t.description}" for t in tools]),
                 "tool_names": tool_names
@@ -82,7 +87,8 @@ class ResumeProcessor(OpenAIAgent):
             result = self.llm_chain.run(
                 input=state.input,
                 tools=self.tools,
-                tool_names=", ".join([t.name for t in self.tools])
+                tool_names=", ".join([t.name for t in self.tools]),
+                agent_scratchpad=""  # Add this required parameter
             )
             
             processed = [

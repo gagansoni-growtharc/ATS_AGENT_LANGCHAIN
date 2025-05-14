@@ -4,8 +4,11 @@ from langchain.prompts import PromptTemplate
 from langchain.agents.output_parsers import JSONAgentOutputParser
 from abc import ABC, abstractmethod
 from typing import List, Optional
+from pydantic import Field
 
 class OpenAIAgent(Agent, ABC):
+    tools: List = Field(default_factory=list, description="List of tools available to the agent")
+    
     def __init__(
         self,
         llm_chain: LLMChain,
@@ -17,7 +20,9 @@ class OpenAIAgent(Agent, ABC):
             allowed_tools=allowed_tools or [],
             **kwargs
         )
-        self.tools = kwargs.get("tools", [])
+        # Since we defined tools as a field, we can set it via the model's framework
+        if "tools" in kwargs:
+            self.tools = kwargs.get("tools")
     
     @abstractmethod
     def create_prompt(self, tools: list) -> PromptTemplate:
