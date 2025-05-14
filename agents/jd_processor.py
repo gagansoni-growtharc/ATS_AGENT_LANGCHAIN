@@ -54,6 +54,7 @@ class JDProcessor(OpenAIAgent):
             Observation: The tool's output
             ... (repeat as needed)
             Final Answer: The parsed job description data
+            Agent Scratchpad :{agent_scratchpad}
             """,
             input_variables=["jd_content", "tools", "agent_scratchpad"],
             partial_variables={

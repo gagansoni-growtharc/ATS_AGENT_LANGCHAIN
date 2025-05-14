@@ -7,6 +7,7 @@ from pathlib import Path
 from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from langchain.chains.llm import LLMChain
+from langchain.agents.output_parsers import JSONAgentOutputParser  # Added import
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +25,15 @@ class Coordinator(OpenAIAgent):
         # Initialize LLM chain
         llm_chain = LLMChain(llm=llm, prompt=prompt)
         
+        # Create output parser - Add this missing part
+        output_parser = JSONAgentOutputParser()
+        
         # Call parent constructor
         super().__init__(
             llm_chain=llm_chain,
             allowed_tools=[tool.name for tool in tools],
-            tools=tools
+            tools=tools,
+            output_parser=output_parser  # Add this parameter
         )
         
         # Store LLM for direct usage
@@ -47,6 +52,7 @@ class Coordinator(OpenAIAgent):
             {resume_content}
             
             Score (0-100):
+            Agent Scratchpad :{agent_scratchpad}
             """,
             input_variables=["jd_content", "resume_content", "agent_scratchpad"]
         )

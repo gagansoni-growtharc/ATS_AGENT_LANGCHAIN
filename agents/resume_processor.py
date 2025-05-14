@@ -66,6 +66,7 @@ class ResumeProcessor(OpenAIAgent):
             Observation: The tool's output
             ... (repeat as needed)
             Final Answer: The processed resume data in JSON format
+            Agent Scratchpad :{agent_scratchpad}
             """,
             input_variables=["input", "tools", "tool_names", "agent_scratchpad"],
             partial_variables={
