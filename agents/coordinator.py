@@ -4,7 +4,7 @@ from tools.file_manager import move_filtered_resumes
 from typing import Dict, Any
 import logging
 from pathlib import Path
-from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from langchain.prompts import PromptTemplate
 from langchain.chains.llm import LLMChain
 from langchain.agents.output_parsers import JSONAgentOutputParser  # Added import
@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 class Coordinator(OpenAIAgent):
     def __init__(self):
         # Initialize LLM
-        llm = ChatOpenAI(model="gpt-4o", temperature=0)
+        llm = ChatGroq(api_key="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",model="llama3-70b-8192", temperature=0)
+
         
         # Setup tools
         tools = [move_filtered_resumes]

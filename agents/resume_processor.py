@@ -6,14 +6,15 @@ from tools.resume_parser import batch_process_resume_folder, process_resume_pdf
 from schemas.base import AgentState
 from schemas.resume import ResumeContent
 from logger.logger import log_error
-from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from langchain.chains.llm import LLMChain
 from langchain.agents.output_parsers import JSONAgentOutputParser
 
 class ResumeProcessor(OpenAIAgent):
     def __init__(self):
         # Initialize the LLM
-        llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
+        llm = ChatGroq(api_key="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",model="llama3-70b-8192", temperature=0)
+
         
         # Setup tools
         tools = self._setup_tools()

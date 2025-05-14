@@ -3,7 +3,7 @@ from tools.jd_parser import parse_job_description_content
 from schemas.jd import JDParsingInput
 from schemas.base import AgentState
 import logging
-from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from langchain.prompts import PromptTemplate
 from langchain.chains.llm import LLMChain
 from langchain.agents.output_parsers import JSONAgentOutputParser  # Added import
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class JDProcessor(OpenAIAgent):
     def __init__(self):
         # Initialize LLM
-        llm = ChatOpenAI(model="gpt-4o", temperature=0)
+        llm = ChatGroq(api_key="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",model="llama3-70b-8192", temperature=0)
         
         # Setup tools
         tools = [parse_job_description_content]

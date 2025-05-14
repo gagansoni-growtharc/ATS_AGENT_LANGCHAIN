@@ -12,7 +12,9 @@ class ATSWorkflow:
         self.coordinator = Coordinator()
         
         self._build_graph()
-        log_debug("Graph builded")
+        # Compile the graph after building it
+        self.workflow = self.graph.compile()
+        log_debug("Graph built and compiled")
 
     def _build_graph(self):
         log_debug("Building Graph")
@@ -23,6 +25,8 @@ class ATSWorkflow:
         self.graph.add_edge("parse_jd", "process_resumes")
         self.graph.add_edge("process_resumes", "score_and_move")
         self.graph.add_edge("score_and_move", END)
+        self.graph.set_entry_point("parse_jd")
         
     def invoke(self, initial_state: AgentState) -> AgentState:
-        return self.graph.invoke(initial_state)
+        # Use the compiled workflow for invocation
+        return self.workflow.invoke(initial_state)
