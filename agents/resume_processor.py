@@ -8,16 +8,26 @@ from schemas.resume import ResumeContent
 from logger.logger import log_error
 from langchain_openai import ChatOpenAI
 from langchain.chains.llm import LLMChain
+from langchain.agents.output_parsers import JSONAgentOutputParser
 
 class ResumeProcessor(OpenAIAgent):
     def __init__(self):
         llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
         tools = self._setup_tools()
         prompt = self.create_prompt(tools)
+        
+        # Create the output parser
+        output_parser = JSONAgentOutputParser()
+        
+        # Initialize the LLM chain
+        llm_chain = LLMChain(llm=llm, prompt=prompt)
+        
+        # Pass the output_parser to the parent class constructor
         super().__init__(
-            llm_chain=LLMChain(llm=llm, prompt=prompt),
+            llm_chain=llm_chain,
             allowed_tools=[t.name for t in tools],
-            tools=tools
+            tools=tools,
+            output_parser=output_parser  # Add the missing output_parser
         )
     
     def _setup_tools(self) -> List[Tool]:
