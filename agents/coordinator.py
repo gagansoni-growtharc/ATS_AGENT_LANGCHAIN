@@ -96,6 +96,9 @@ class Coordinator(OpenAIAgent):
 
             log_info(f"Processing {len(state.resumes)} resumes")
 
+            score_threshold = state.metadata.get("score_threshold", 75.0)
+            log_info(f"Using score threshold: {score_threshold}")
+
             scores_dict = {}
             processed_count = 0
             error_count = 0
@@ -109,7 +112,7 @@ class Coordinator(OpenAIAgent):
                     processed_count += 1
 
                     # Move qualified resumes
-                    if score > 75:
+                    if score > score_threshold:
                         output_dir = state.metadata.get("output_dir", "filtered_resumes")
                         log_info(f"Moving qualified resume: {resume.file_path} (Score: {score})")
                         self._move_qualified_resume(resume.file_path, score, output_dir)
@@ -130,6 +133,7 @@ class Coordinator(OpenAIAgent):
                     "scoring_results": [{
                         "file_path": resume.file_path,
                         "score": score,
+                        "qualified": score > score_threshold,
                         "metadata": resume.metadata if resume.metadata else None
                     } for resume, score in zip(state.resumes, scores_dict.values())]
                 }

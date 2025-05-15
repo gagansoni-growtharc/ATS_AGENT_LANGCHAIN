@@ -1,7 +1,7 @@
 from langgraph.graph import StateGraph, END
 from agents import ResumeProcessor, JDProcessor, Coordinator
 from schemas.base import AgentState
-from logger.logger import log_info, log_debug, log_error
+from logger.logger import log_info, log_debug, log_error,log_warn
 
 class ATSWorkflow:
     def __init__(self):
@@ -29,6 +29,18 @@ class ATSWorkflow:
         
     def invoke(self, initial_state: AgentState) -> AgentState:
         try:
+            
+            if "score_threshold" in initial_state.metadata:
+                threshold = initial_state.metadata["score_threshold"]
+                if not isinstance(threshold, (int, float)) or threshold < 0 or threshold > 100:
+                    log_warn(f"Invalid threshold value: {threshold}. Using default 75.0")
+                    initial_state.metadata["score_threshold"] = 75.0
+                else:
+                    log_info(f"Using custom threshold: {threshold}")
+            else:
+                log_info("No threshold specified, using default 75.0")
+                initial_state.metadata["score_threshold"] = 75.0
+
             result = self.workflow.invoke(initial_state)
             log_debug(f"Results in ATS_Workflow: {result}")
 
@@ -39,7 +51,13 @@ class ATSWorkflow:
 
             final_state = AgentState(**result)
 
+            threshold = final_state.metadata.get("score_threshold", 75.0)
+            qualified_count = sum(1 for score in final_state.scores.values() if score > threshold)
+            total_count = len(final_state.scores)
+            
             log_info(f"Final scores: {final_state.scores}")
+            log_info(f"Qualified resumes: {qualified_count}/{total_count} (threshold: {threshold})")
+            
             return final_state
 
         except Exception as e:
