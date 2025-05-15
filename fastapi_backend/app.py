@@ -243,6 +243,35 @@ async def set_metadata_folder(request: FolderPathRequest):
         log_error(f"Failed to set metadata folder: {str(e)}")
         job_status.update_job(job_id, "error", {"error": str(e)})
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/set/output_dir", response_model=JobResponse)
+async def set_output_dir(request: FolderPathRequest):
+    """Set a folder path for storing filtered resumes"""
+    job_id = request.job_id
+    folder_path = request.folder_path
+    
+    job_info = job_status.get_job(job_id)
+    if not job_info:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    try:
+        # Validate that the folder exists or create it
+        output_folder = Path(folder_path)
+        output_folder.mkdir(parents=True, exist_ok=True)
+        
+        log_info(f"Set output directory: {folder_path} for job {job_id}")
+        
+        # Update job info
+        job_info["results"] = job_info.get("results", {})
+        job_info["results"]["output_dir"] = str(output_folder)
+        job_status.update_job(job_id, job_info["status"], job_info["results"])
+        
+        return {"job_id": job_id, "status": job_info["status"], "results": job_info["results"]}
+    
+    except Exception as e:
+        log_error(f"Failed to set output directory: {str(e)}")
+        job_status.update_job(job_id, "error", {"error": str(e)})
+        raise HTTPException(status_code=500, detail=str(e))
 
 def process_ats_job(job_id: str, threshold: float):
     """Background task to process ATS job"""
@@ -256,9 +285,12 @@ def process_ats_job(job_id: str, threshold: float):
         results = job_info["results"]
         job_status.update_job(job_id, "processing")
         
-        # Create output directory for this job
-        job_output_dir = OUTPUT_DIR / job_id
-        job_output_dir.mkdir(exist_ok=True)
+        if "output_dir" in results:
+            job_output_dir = Path(results["output_dir"])
+        else:
+            # Create output directory for this job
+            job_output_dir = OUTPUT_DIR / job_id
+            job_output_dir.mkdir(exist_ok=True)
         
         # Initialize workflow
         workflow = ATSWorkflow()

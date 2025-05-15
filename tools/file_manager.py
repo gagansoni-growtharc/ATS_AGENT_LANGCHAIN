@@ -33,6 +33,12 @@ def move_filtered_resumes(source: str, dest: str, score: float, create_dirs: boo
         dest_dir = Path(dest)
         score = score
         create_dirs = create_dirs
+
+        if not source_path.exists():
+            return {
+                "status": "error",
+                "message": f"Source file not found: {source_path}"
+            }
         
         # Validate PDF using PyMuPDF
         with fitz.open(source_path) as doc:
@@ -43,6 +49,12 @@ def move_filtered_resumes(source: str, dest: str, score: float, create_dirs: boo
         if create_dirs:
             dest_dir.mkdir(parents=True, exist_ok=True)
         
+        if not dest_dir.exists():
+            return {
+                "status": "error",
+                "message": f"Destination directory not found: {dest_dir}"
+            }
+
         # Format destination filename
         score_str = f"{score:.1f}".replace('.', '_')
         dest_path = dest_dir / f"{score_str}_{source_path.name}"

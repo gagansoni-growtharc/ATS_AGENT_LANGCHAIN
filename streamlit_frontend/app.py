@@ -15,49 +15,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-COLOR_SCHEME = {
-    "growth_arc_primary": "#ACC384",  # Dark Moss Green
-    "growth_arc_secondary": "#DBE8F4",  # Pistachio
-    "growth_arc_accent": "#DBE8F4",  # Sunny Yellow
-    "growth_arc_neutral": "#2C3531",  # Dark Slate
-    "growth_arc_background": "#FFFDE7"  # Light Gray
-}
 
-def apply_custom_style():
-    st.markdown(f"""
-        <style>
-            /* Main background */
-            .stApp {{
-                background-color: {COLOR_SCHEME["growth_arc_background"]};
-            }}
-            
-            /* Headers */
-            h1, h2, h3 {{
-                color: {COLOR_SCHEME["growth_arc_primary"]} !important;
-            }}
-            
-            /* Buttons */
-            .stButton>button {{
-                background-color: {COLOR_SCHEME["growth_arc_secondary"]};
-                color: {COLOR_SCHEME["growth_arc_neutral"]};
-            }}
-            
-            /* Sidebar */
-            .css-1d391kg {{
-                background-color: {COLOR_SCHEME["growth_arc_primary"]} !important;
-            }}
-            
-            /* Metric boxes */
-            .stMetric {{
-                background-color: {COLOR_SCHEME["growth_arc_accent"]};
-                border-radius: 10px;
-                padding: 15px;
-            }}
-            
-        </style>
-    """, unsafe_allow_html=True)
 
-apply_custom_style()
 
 # API endpoints
 API_URL = "http://localhost:8000"
@@ -104,6 +63,14 @@ with tab1:
         help="Provide the full path to the folder containing your metadata JSON files. File names should match resume names."
     )
     
+    # Output Directory Path
+    st.subheader("Output Directory Path")
+    output_dir = st.text_input(
+        "Enter the folder path where qualified resumes should be saved",
+        value="./filtered_resumes",
+        help="Provide the full path to the folder where qualified resumes will be copied. The folder will be created if it doesn't exist."
+    )
+    
     # Submit button
     if st.button("Submit Paths", key="submit_paths_btn"):
         if not jd_file:
@@ -136,6 +103,13 @@ with tab1:
                             json={"job_id": job_id, "folder_path": metadata_folder}
                         )
                         metadata_folder_response.raise_for_status()
+                    
+                    # Step 4: Set Output Directory
+                    output_dir_response = requests.post(
+                        f"{API_URL}/set/output_dir",
+                        json={"job_id": job_id, "folder_path": output_dir}
+                    )
+                    output_dir_response.raise_for_status()
                     
                     st.session_state.job_status = "uploaded"
                     st.success(f"Paths processed successfully! Job ID: {job_id}")
@@ -216,7 +190,7 @@ with tab3:
         
         # Display summary
         st.subheader("Summary")
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             st.metric("Total Resumes", results.get("total_count", 0))
@@ -224,6 +198,26 @@ with tab3:
             st.metric("Qualified Resumes", results.get("qualified_count", 0))
         with col3:
             st.metric("Score Threshold", f"{results.get('threshold', 75.0)}%")
+        
+        # Display output directory
+        output_dir = results.get("output_dir", "")
+        if output_dir:
+            with col4:
+                st.metric("Output Directory", str(Path(output_dir).name))
+            
+            # Add a button to open the output directory
+            if os.path.exists(output_dir):
+                st.success(f"✅ Qualified resumes have been copied to: {output_dir}")
+                if st.button("Open Output Directory"):
+                    # This won't work in cloud deployment, but works in local setup
+                    try:
+                        import webbrowser
+                        output_path = Path(output_dir).resolve()
+                        webbrowser.open(f"file://{output_path}")
+                    except Exception as e:
+                        st.error(f"Could not open directory: {str(e)}")
+            else:
+                st.warning(f"⚠️ Output directory not found: {output_dir}")
         
         # Create DataFrame from results
         if "scoring_results" in results:
@@ -277,7 +271,3 @@ with tab3:
             st.info("No detailed scoring results available.")
     else:
         st.info("Complete the processing step to view results here.")
-
-# Footer
-st.sidebar.markdown("---")
-st.sidebar.info("ATS Resume Screening System v1.0")

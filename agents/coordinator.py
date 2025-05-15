@@ -210,6 +210,8 @@ class Coordinator(OpenAIAgent):
         """Move qualified resume with enhanced error handling"""
         try:
             log_info(f"Attempting to move resume: {file_path} to {output_dir}")
+
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
             
             result = move_filtered_resumes.invoke({
                 "source": file_path,
