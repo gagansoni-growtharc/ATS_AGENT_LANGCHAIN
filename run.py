@@ -8,7 +8,7 @@ import sys
 def run_fastapi():
     print("Starting FastAPI server...")
     fastapi_process = subprocess.Popen(
-        ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"],
+        ["uvicorn", "fastapi_backend.app:app", "--host", "0.0.0.0", "--port", "8000"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True
@@ -18,7 +18,7 @@ def run_fastapi():
 def run_streamlit():
     print("Starting Streamlit server...")
     streamlit_process = subprocess.Popen(
-        ["streamlit", "run", "app.py"],
+        ["streamlit", "run", "streamlit_frontend/app.py"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True

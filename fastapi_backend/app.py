@@ -11,7 +11,7 @@ import uuid
 from schemas.base import AgentState
 from workflows.ats_workflow import ATSWorkflow
 from dotenv import load_dotenv
-from logger import LogManager, log_info, log_debug, log_error
+from logger.logger import LogManager, log_info, log_debug, log_error, log_warn
 
 # Load environment variables
 load_dotenv()
@@ -64,6 +64,10 @@ class ProcessRequest(BaseModel):
     job_id: str
     threshold: float = 75.0
 
+class FolderPathRequest(BaseModel):
+    job_id: str
+    folder_path: str
+
 class JobResponse(BaseModel):
     job_id: str
     status: str
@@ -101,6 +105,7 @@ async def upload_jd(jd_file: UploadFile = File(...)):
         job_status.update_job(job_id, "error", {"error": str(e)})
         raise HTTPException(status_code=500, detail=str(e))
 
+# Keep the original method for backward compatibility
 @app.post("/upload/resumes", response_model=JobResponse)
 async def upload_resumes(job_id: str = Form(...), resumes: List[UploadFile] = File(...)):
     """Upload multiple resume files for processing"""
@@ -133,6 +138,46 @@ async def upload_resumes(job_id: str = Form(...), resumes: List[UploadFile] = Fi
         job_status.update_job(job_id, "error", {"error": str(e)})
         raise HTTPException(status_code=500, detail=str(e))
 
+# Add a new endpoint for specifying a folder path instead of uploading files
+@app.post("/set/resume_folder", response_model=JobResponse)
+async def set_resume_folder(request: FolderPathRequest):
+    """Set a folder path for resumes instead of uploading files"""
+    job_id = request.job_id
+    folder_path = request.folder_path
+    
+    job_info = job_status.get_job(job_id)
+    if not job_info:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    try:
+        # Validate that the folder exists
+        resume_folder = Path(folder_path)
+        if not resume_folder.exists() or not resume_folder.is_dir():
+            raise HTTPException(status_code=400, detail=f"Folder not found: {folder_path}")
+        
+        # Count resumes (PDF files) in the folder
+        resume_files = list(resume_folder.glob("*.pdf"))
+        resume_count = len(resume_files)
+        
+        if resume_count == 0:
+            log_warn(f"No PDF files found in folder: {folder_path}")
+        
+        log_info(f"Set resume folder: {folder_path} with {resume_count} PDF files for job {job_id}")
+        
+        # Update job info
+        job_info["results"] = job_info.get("results", {})
+        job_info["results"]["resume_folder"] = str(resume_folder)
+        job_info["results"]["resume_count"] = resume_count
+        job_status.update_job(job_id, "resumes_uploaded", job_info["results"])
+        
+        return {"job_id": job_id, "status": "resumes_uploaded", "results": job_info["results"]}
+    
+    except Exception as e:
+        log_error(f"Failed to set resume folder: {str(e)}")
+        job_status.update_job(job_id, "error", {"error": str(e)})
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Keep the original method for backward compatibility
 @app.post("/upload/metadata", response_model=JobResponse)
 async def upload_metadata(job_id: str = Form(...), metadata_files: List[UploadFile] = File(...)):
     """Upload metadata files (optional)"""
@@ -161,6 +206,41 @@ async def upload_metadata(job_id: str = Form(...), metadata_files: List[UploadFi
     
     except Exception as e:
         log_error(f"Failed to upload metadata: {str(e)}")
+        job_status.update_job(job_id, "error", {"error": str(e)})
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Add a new endpoint for specifying a metadata folder path
+@app.post("/set/metadata_folder", response_model=JobResponse)
+async def set_metadata_folder(request: FolderPathRequest):
+    """Set a folder path for metadata instead of uploading files"""
+    job_id = request.job_id
+    folder_path = request.folder_path
+    
+    job_info = job_status.get_job(job_id)
+    if not job_info:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    try:
+        # Validate that the folder exists
+        metadata_folder = Path(folder_path)
+        if not metadata_folder.exists() or not metadata_folder.is_dir():
+            raise HTTPException(status_code=400, detail=f"Folder not found: {folder_path}")
+        
+        # Count metadata files (JSON files) in the folder
+        metadata_files = list(metadata_folder.glob("*.json"))
+        metadata_count = len(metadata_files)
+        
+        log_info(f"Set metadata folder: {folder_path} with {metadata_count} JSON files for job {job_id}")
+        
+        # Update job info
+        job_info["results"] = job_info.get("results", {})
+        job_info["results"]["metadata_folder"] = str(metadata_folder)
+        job_status.update_job(job_id, "metadata_uploaded", job_info["results"])
+        
+        return {"job_id": job_id, "status": "metadata_uploaded", "results": job_info["results"]}
+    
+    except Exception as e:
+        log_error(f"Failed to set metadata folder: {str(e)}")
         job_status.update_job(job_id, "error", {"error": str(e)})
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -247,4 +327,4 @@ async def get_job_status(job_id: str):
     return {"job_id": job_id, "status": job_info["status"], "results": job_info.get("results")}
 
 if __name__ == "__main__":
-    uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

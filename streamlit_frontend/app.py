@@ -15,6 +15,50 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+COLOR_SCHEME = {
+    "growth_arc_primary": "#ACC384",  # Dark Moss Green
+    "growth_arc_secondary": "#DBE8F4",  # Pistachio
+    "growth_arc_accent": "#DBE8F4",  # Sunny Yellow
+    "growth_arc_neutral": "#2C3531",  # Dark Slate
+    "growth_arc_background": "#FFFDE7"  # Light Gray
+}
+
+def apply_custom_style():
+    st.markdown(f"""
+        <style>
+            /* Main background */
+            .stApp {{
+                background-color: {COLOR_SCHEME["growth_arc_background"]};
+            }}
+            
+            /* Headers */
+            h1, h2, h3 {{
+                color: {COLOR_SCHEME["growth_arc_primary"]} !important;
+            }}
+            
+            /* Buttons */
+            .stButton>button {{
+                background-color: {COLOR_SCHEME["growth_arc_secondary"]};
+                color: {COLOR_SCHEME["growth_arc_neutral"]};
+            }}
+            
+            /* Sidebar */
+            .css-1d391kg {{
+                background-color: {COLOR_SCHEME["growth_arc_primary"]} !important;
+            }}
+            
+            /* Metric boxes */
+            .stMetric {{
+                background-color: {COLOR_SCHEME["growth_arc_accent"]};
+                border-radius: 10px;
+                padding: 15px;
+            }}
+            
+        </style>
+    """, unsafe_allow_html=True)
+
+apply_custom_style()
+
 # API endpoints
 API_URL = "http://localhost:8000"
 
@@ -34,35 +78,40 @@ st.sidebar.markdown("---")
 
 # Main content
 st.title("📄 ATS Resume Screening System")
-st.markdown("Upload a job description and resumes to get AI-powered resume screening results.")
+st.markdown("Upload a job description and provide folder paths to get AI-powered resume screening results.")
 
 # Create tabs for workflow
 tab1, tab2, tab3 = st.tabs(["Upload Files", "Process", "Results"])
 
 with tab1:
-    st.header("Step 1: Upload Job Description & Resumes")
+    st.header("Step 1: Upload Job Description & Provide Paths")
     
     # Upload Job Description
     st.subheader("Upload Job Description")
     jd_file = st.file_uploader("Upload Job Description (PDF/DOCX/TXT)", type=["pdf", "docx", "txt"])
     
-    # Upload Resumes
-    st.subheader("Upload Resumes")
-    resume_files = st.file_uploader("Upload Resumes (PDF format recommended)", type=["pdf"], accept_multiple_files=True)
+    # Resume Folder Path
+    st.subheader("Resume Folder Path")
+    resume_folder = st.text_input(
+        "Enter the folder path containing all resumes (PDF format recommended)",
+        help="Provide the full path to the folder containing your resume files"
+    )
     
-    # Optional: Upload Metadata
-    st.subheader("Optional: Upload Metadata")
-    st.markdown("Upload JSON files with metadata for resumes. File names should match resume names.")
-    metadata_files = st.file_uploader("Upload Metadata (JSON)", type=["json"], accept_multiple_files=True)
+    # Metadata Folder Path
+    st.subheader("Optional: Metadata Folder Path")
+    metadata_folder = st.text_input(
+        "Enter the folder path containing metadata files (JSON)",
+        help="Provide the full path to the folder containing your metadata JSON files. File names should match resume names."
+    )
     
-    # Upload button
-    if st.button("Upload Files", key="upload_btn"):
+    # Submit button
+    if st.button("Submit Paths", key="submit_paths_btn"):
         if not jd_file:
             st.error("Please upload a job description file.")
-        elif not resume_files:
-            st.error("Please upload at least one resume file.")
+        elif not resume_folder:
+            st.error("Please enter a resume folder path.")
         else:
-            with st.spinner("Uploading files..."):
+            with st.spinner("Processing paths..."):
                 try:
                     # Step 1: Upload JD
                     jd_response = requests.post(
@@ -73,35 +122,27 @@ with tab1:
                     job_id = jd_response.json()["job_id"]
                     st.session_state.job_id = job_id
                     
-                    # Step 2: Upload Resumes
-                    resume_files_dict = {
-                        f"resumes": [(file.name, file.getvalue(), "application/octet-stream") for file in resume_files]
-                    }
-                    resume_response = requests.post(
-                        f"{API_URL}/upload/resumes",
-                        data={"job_id": job_id},
-                        files=resume_files_dict
+                    # Step 2: Set Resume Folder
+                    resume_folder_response = requests.post(
+                        f"{API_URL}/set/resume_folder",
+                        json={"job_id": job_id, "folder_path": resume_folder}
                     )
-                    resume_response.raise_for_status()
+                    resume_folder_response.raise_for_status()
                     
-                    # Step 3: Upload Metadata (optional)
-                    if metadata_files:
-                        metadata_files_dict = {
-                            f"metadata_files": [(file.name, file.getvalue(), "application/json") for file in metadata_files]
-                        }
-                        metadata_response = requests.post(
-                            f"{API_URL}/upload/metadata",
-                            data={"job_id": job_id},
-                            files=metadata_files_dict
+                    # Step 3: Set Metadata Folder (optional)
+                    if metadata_folder:
+                        metadata_folder_response = requests.post(
+                            f"{API_URL}/set/metadata_folder",
+                            json={"job_id": job_id, "folder_path": metadata_folder}
                         )
-                        metadata_response.raise_for_status()
+                        metadata_folder_response.raise_for_status()
                     
                     st.session_state.job_status = "uploaded"
-                    st.success(f"Files uploaded successfully! Job ID: {job_id}")
+                    st.success(f"Paths processed successfully! Job ID: {job_id}")
                     st.session_state.processing_started = False
                     
                 except Exception as e:
-                    st.error(f"Error uploading files: {str(e)}")
+                    st.error(f"Error processing paths: {str(e)}")
 
 with tab2:
     st.header("Step 2: Process Resumes")
@@ -165,7 +206,7 @@ with tab2:
     
     # Display if no job started yet
     if not st.session_state.job_id:
-        st.warning("Please upload files in the first tab to start processing.")
+        st.warning("Please provide paths in the first tab to start processing.")
 
 with tab3:
     st.header("Step 3: View Results")
