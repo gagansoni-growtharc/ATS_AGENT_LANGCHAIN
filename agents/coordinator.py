@@ -133,7 +133,7 @@ class Coordinator(OpenAIAgent):
                     "scoring_results": [{
                         "file_path": resume.file_path,
                         "score": score,
-                        "qualified": score > score_threshold,
+                        "qualified": score >= score_threshold,
                         "metadata": resume.metadata if resume.metadata else None
                     } for resume, score in zip(state.resumes, scores_dict.values())]
                 }

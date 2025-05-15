@@ -52,7 +52,7 @@ class ATSWorkflow:
             final_state = AgentState(**result)
 
             threshold = final_state.metadata.get("score_threshold", 75.0)
-            qualified_count = sum(1 for score in final_state.scores.values() if score > threshold)
+            qualified_count = sum(1 for score in final_state.scores.values() if score >= threshold)
             total_count = len(final_state.scores)
             
             log_info(f"Final scores: {final_state.scores}")

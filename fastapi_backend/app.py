@@ -12,6 +12,9 @@ from schemas.base import AgentState
 from workflows.ats_workflow import ATSWorkflow
 from dotenv import load_dotenv
 from logger.logger import LogManager, log_info, log_debug, log_error, log_warn
+import zipfile
+import io
+from fastapi.responses import StreamingResponse
 
 # Load environment variables
 load_dotenv()
@@ -28,6 +31,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
+    expose_headers=["Content-Disposition"]
 )
 
 # Class to store job status
@@ -53,8 +57,8 @@ class JobStatus:
 job_status = JobStatus()
 
 # Create temp directories for uploads
-TEMP_DIR = Path("./temp")
-TEMP_DIR.mkdir(exist_ok=True)
+TEMP_DIR = Path("temp").absolute()
+TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 # Create output directory for filtered resumes
 OUTPUT_DIR = Path("./filtered_resumes")
@@ -84,7 +88,7 @@ async def upload_jd(jd_file: UploadFile = File(...)):
     
     # Create job directories
     job_dir = TEMP_DIR / job_id
-    job_dir.mkdir(exist_ok=True)
+    job_dir.mkdir(parents=True, exist_ok=True)
     
     # Initialize job status
     job_status.create_job(job_id)
@@ -136,6 +140,46 @@ async def upload_resumes(job_id: str = Form(...), resumes: List[UploadFile] = Fi
     except Exception as e:
         log_error(f"Failed to upload resumes: {str(e)}")
         job_status.update_job(job_id, "error", {"error": str(e)})
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/download/{job_id}/qualified_resumes")
+async def download_qualified_resumes(job_id: str):
+    """Download qualified resumes as a zip file"""
+    job_info = job_status.get_job(job_id)
+    
+    if not job_info:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job_info["status"] != "completed":
+        raise HTTPException(status_code=400, detail="Job processing not completed")
+    
+    try:
+        results = job_info.get("results", {})
+        output_dir = results.get("output_dir")
+        
+        if not output_dir or not Path(output_dir).exists():
+            raise HTTPException(status_code=404, detail="Output directory not found")
+        
+        # Create a zip file in memory
+        zip_io = io.BytesIO()
+        with zipfile.ZipFile(zip_io, mode='w', compression=zipfile.ZIP_DEFLATED) as zip_file:
+            output_path = Path(output_dir)
+            for file_path in output_path.glob('*.pdf'):
+                # Add file to zip with just the filename (not the full path)
+                zip_file.write(file_path, arcname=file_path.name)
+        
+        # Seek to the beginning of the stream
+        zip_io.seek(0)
+        
+        # Return the zip file as a streaming response
+        return StreamingResponse(
+            zip_io, 
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename=qualified_resumes_{job_id}.zip"}
+        )
+    
+    except Exception as e:
+        log_error(f"Failed to create zip file: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Add a new endpoint for specifying a folder path instead of uploading files
@@ -312,7 +356,7 @@ def process_ats_job(job_id: str, threshold: float):
         # Update job status with results
         job_status.update_job(job_id, "completed", {
             "scores": result.scores,
-            "qualified_count": sum(1 for score in result.scores.values() if score > threshold),
+            "qualified_count": sum(1 for score in result.scores.values() if score >= threshold),
             "total_count": len(result.scores),
             "output_dir": str(job_output_dir),
             "threshold": threshold,
