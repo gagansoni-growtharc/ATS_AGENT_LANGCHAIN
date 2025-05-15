@@ -9,6 +9,7 @@ from langchain_groq import ChatGroq
 from langchain.prompts import PromptTemplate
 from langchain.chains.llm import LLMChain
 from langchain.agents.output_parsers import JSONAgentOutputParser
+from logger.logger import log_info, log_debug, log_error
 
 logger = logging.getLogger(__name__)
 
@@ -75,40 +76,37 @@ class JDProcessor(OpenAIAgent):
     def process(self, state: AgentState) -> AgentState:
         try:
             jd_path = state.metadata.get("jd_path")
-            
+            jd_path = Path(jd_path)
             # Use PyMuPDF (fitz) to reliably extract text from PDF
             try:
-                if jd_path.lower().endswith('.pdf'):
-                    # Handle PDF files with PyMuPDF
-                    with fitz.open(jd_path) as doc:
-                        jd_content = ""
-                        for page in doc:
-                            jd_content += page.get_text()
-                else:
-                    # Handle text files with UTF-8 encoding
-                    with open(jd_path, "r", encoding="utf-8") as f:
-                        jd_content = f.read()
+                if not jd_path.exists():
+                    log_error("File not found", path=str(jd_path))
+                    return {"status": "error", "message": "File not found"}
+                with fitz.open(jd_path) as doc:
+                    jd_content = ""
+                    for page in doc:
+                        jd_content += page.get_text()
             except UnicodeDecodeError:
                 # Fall back to latin-1 encoding if UTF-8 fails
                 with open(jd_path, "r", encoding="latin-1") as f:
                     jd_content = f.read()
                 
-            # FIX: Create proper input object for parse_job_description_content
+            
+            # Pass parameters directly, not through a params dictionary
             input_obj = {
-                "params": {  # Pass parameters through a params dictionary
-                    "jd_content": jd_content,
-                    "parse_mode": "full"
-                }
+                "jd_content": jd_content,
+                "parse_mode": "full"
             }
             
             parsed = parse_job_description_content.invoke(input_obj)
-            
+
+            state_data = state.model_dump(exclude={"jd_content", "metadata"})
             return AgentState(
-                **state.model_dump(),
+                **state_data,
                 jd_content=jd_content,
                 metadata={
                     **state.metadata,
-                    "parsed_jd": parsed
+                    "parsed_jd": parsed["result"]
                 }
             )
         except Exception as e:

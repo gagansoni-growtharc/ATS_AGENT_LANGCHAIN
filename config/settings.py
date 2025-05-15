@@ -14,24 +14,16 @@ class Settings(BaseSettings):
         default="",
         description="OpenAI API key"
     )
-    PG_CONNECTION_STRING: str = Field(
-        default="",
-        description="PostgreSQL connection string"
-    )
     OUTPUT_DIR: Path = Field(
         default=Path("filtered_resumes"),
         description="Directory for filtered resumes"
-    )
-    KB_DIR: Path = Field(
-        default=Path("knowledge_base"),
-        description="Knowledge base directory"
-    )
+    )   
     LOG_DB_NAME: str = Field(
-        default="ats_logs",
+        default="ats_agent",
         description="MongoDB database name for logs"
     )
     LOG_COLLECTION: str = Field(
-        default="logs",
+        default="ats_logs",
         description="MongoDB collection name for logs"
     )
 
@@ -40,7 +32,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8"
     )
 
-    @field_validator("OUTPUT_DIR", "KB_DIR", mode="after")
+    @field_validator("OUTPUT_DIR", mode="after")
     @classmethod
     def validate_dirs(cls, value: Path) -> Path:
         """Ensure directories exist and are absolute paths"""

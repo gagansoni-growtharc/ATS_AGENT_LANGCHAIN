@@ -5,7 +5,7 @@ from typing import Dict, Any, List
 import fitz  # PyMuPDF
 import logging
 from logger.logger import log_error, log_debug, log_warn  # Use your custom logger
-
+import json
 logger = logging.getLogger(__name__)
 
 class ResumeProcessInput(BaseModel):
@@ -16,41 +16,42 @@ class ResumeProcessInput(BaseModel):
     )
 
 @tool(args_schema=ResumeProcessInput)
-def process_resume_pdf(params: Dict[str, Any]) -> Dict[str, Any]:
+def process_resume_pdf(file_path: str , extract_metadata: bool = False) -> Dict[str, Any]:
     """Parse resume PDF and extract text content with optional metadata"""
     try:
-        # FIX: Extract parameters from the nested params dictionary if provided
-        if "params" in params:
-            params = params["params"]
-            
-        path = Path(params["file_path"])
+        # Create validated input object
+        log_debug(file_path)
+        path = Path(file_path)
         if not path.exists():
             log_error("File not found", path=str(path))
             return {"status": "error", "message": "File not found"}
             
         # Validate PDF structure
         with fitz.open(path) as doc:
-            if len(doc) == 0:
+            page_count = len(doc)
+            if page_count == 0:
                 log_error("Empty PDF file", path=str(path))
                 return {"status": "error", "message": "Empty PDF file"}
             
             text = "\n".join([page.get_text() for page in doc])
+            log_debug(text)
             metadata = {}
             
-            if params.get("extract_metadata", False):
+            if extract_metadata:
                 metadata = {
                     "author": doc.metadata.get("author", ""),
                     "title": doc.metadata.get("title", ""),
-                    "creation_date": doc.metadata.get("creationDate", "")
+                    "creation_date": doc.metadata.get("creationDate", ""),
+                    "page_count": page_count
                 }
-                log_debug("Extracted PDF metadata", metadata=metadata)
+                log_debug(f"Extracted PDF metadata {json.dumps(metadata)}")
 
         return {
             "status": "success",
             "content": text,
             "metadata": metadata,
             "file_path": str(path),
-            "page_count": len(doc)
+            "page_count": page_count
         }
         
     except Exception as e:
@@ -69,20 +70,15 @@ class BatchProcessInput(BaseModel):
         description="Number of files to process at once"
     )
 
-@tool(args_schema=BatchProcessInput)
-def batch_process_resume_folder(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Batch process resumes with progress tracking and error handling"""
+@tool(args_schema=BatchProcessInput,description="Process all resume files in a folder.")
+def batch_process_resume_folder(folder_path: str, extension: str = "pdf", batch_size: int = 100) -> Dict[str, Any]:
     try:
-        # FIX: Extract parameters from the nested params dictionary if provided
-        if "params" in params:
-            params = params["params"]
-            
-        folder = Path(params["folder_path"])
+        folder = Path(folder_path)
         if not folder.exists():
-            log_error("Folder not found", path=str(folder))
             return {"status": "error", "message": "Folder not found"}
-            
-        pdf_files = list(folder.glob(f"*.{params.get('extension', 'pdf')}"))
+        
+        pdf_files = list(folder.glob(f"*.{extension}"))
+
         if not pdf_files:
             log_warn("No PDF files found", path=str(folder))
             return {"status": "error", "message": "No PDF files found"}
@@ -90,23 +86,23 @@ def batch_process_resume_folder(params: Dict[str, Any]) -> Dict[str, Any]:
         processed = []
         errors = []
         
-        batch_size = params.get("batch_size", 100)
+        batch_size = batch_size
         
         for i, pdf_file in enumerate(pdf_files):
             try:
-                result = process_resume_pdf({
-                    "params": {  # FIX: Use proper nested params format
+                result = process_resume_pdf.invoke({  # FIX: Use proper nested params format
                         "file_path": str(pdf_file),
                         "extract_metadata": True
-                    }
                 })
                 
                 if result["status"] == "success":
                     processed.append({
                         "file_name": pdf_file.name,
-                        "content_length": len(result["content"]),
-                        "metadata": result["metadata"]
+                        "content": result["content"],
+                        "metadata": result["metadata"],
+                        "file_path" : str(pdf_file)
                     })
+                    log_debug(f"{pdf_file.name} processed Success")
                 else:
                     errors.append({
                         "file": str(pdf_file),
@@ -126,7 +122,7 @@ def batch_process_resume_folder(params: Dict[str, Any]) -> Dict[str, Any]:
             "status": "success",
             "processed": len(processed),
             "errors": len(errors),
-            "sample_content": processed[:3],  # Return first 3 for verification
+            "processed_files": processed,  
             "error_details": errors if errors else None
         }
         

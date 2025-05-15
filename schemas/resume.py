@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 
 class ResumeMetadata(BaseModel):
     experience_years: Optional[Dict[str, float]] = Field(
@@ -14,7 +14,7 @@ class ResumeMetadata(BaseModel):
 class ResumeContent(BaseModel):
     text: str = Field(..., description="Extracted resume text")
     file_path: str = Field(..., description="Original file path")
-    metadata: Optional[ResumeMetadata] = Field(
+    metadata: Optional[Dict[str,Any]] = Field(
         None,
         description="Optional structured metadata"
     )

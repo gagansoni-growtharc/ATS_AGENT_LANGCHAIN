@@ -17,17 +17,22 @@ class FileMoveInput(BaseModel):
     create_dirs: bool = Field(default=True, description="Create directories if needed")
 
 @tool(args_schema=FileMoveInput)
-def move_filtered_resumes(params: Dict[str, Any]) -> Dict[str, Any]:
+def move_filtered_resumes(source: str, dest: str, score: float, create_dirs: bool = True) -> Dict[str, Any]:
     """Move resumes with score-based filename to destination directory"""
     try:
-        # FIX: Extract parameters from the nested params dictionary if provided
-        if "params" in params:
-            params = params["params"]
             
-        source_path = Path(params["source"])
-        dest_dir = Path(params["dest"])
-        score = params["score"]
-        create_dirs = params.get("create_dirs", True)
+        # Create validated input object
+        validated_input = FileMoveInput(
+            source=source,
+            dest=dest,
+            score=score,
+            create_dirs=create_dirs
+        )
+        
+        source_path = Path(validated_input.source)
+        dest_dir = Path(dest)
+        score = score
+        create_dirs = create_dirs
         
         # Validate PDF using PyMuPDF
         with fitz.open(source_path) as doc:
@@ -43,7 +48,7 @@ def move_filtered_resumes(params: Dict[str, Any]) -> Dict[str, Any]:
         dest_path = dest_dir / f"{score_str}_{source_path.name}"
         
         # Perform the move operation
-        shutil.move(str(source_path), str(dest_path))
+        shutil.copy2(str(source_path), str(dest_path))
         
         return {
             "status": "success",

@@ -29,25 +29,19 @@ class ATSWorkflow:
         
     def invoke(self, initial_state: AgentState) -> AgentState:
         try:
-            # Use the compiled workflow for invocation
             result = self.workflow.invoke(initial_state)
-            
-            # Extract the final state safely
-            if isinstance(result, AgentState):
-                # Result is already an AgentState
-                return result
-            elif hasattr(result, 'values') and callable(result.values):
-                # Result is dict-like, convert values to list to access last item
-                values_list = list(result.values())
-                if values_list:
-                    final_state = values_list[-1]
-                    return final_state if isinstance(final_state, AgentState) else AgentState(scores={})
-                else:
-                    return AgentState(scores={})
-            else:
-                # Fall back to default state
-                log_error("Unexpected workflow result format")
+            log_debug(f"Results in ATS_Workflow: {result}")
+
+            # Wrap the returned dict back into AgentState
+            if not isinstance(result, dict):
+                log_error(f"Unexpected result type: {type(result)}")
                 return AgentState(scores={})
+
+            final_state = AgentState(**result)
+
+            log_info(f"Final scores: {final_state.scores}")
+            return final_state
+
         except Exception as e:
-            log_error(f"Workflow invoke error: {str(e)}")
+            log_error(f"Workflow error: {str(e)}")
             return AgentState(scores={})

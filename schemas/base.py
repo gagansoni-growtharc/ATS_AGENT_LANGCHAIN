@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional, List, Union
 from schemas.resume import ResumeContent
 
 class AgentState(BaseModel):
-    jd_content: Optional[str] = Field(None, description="Job description content")
+    jd_content: Optional[str] = None
     resumes: List[ResumeContent] = Field(default_factory=list, description="Processed resumes")
     scores: Dict[str, float] = Field(default_factory=dict, description="Resume scores")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="System metadata")
