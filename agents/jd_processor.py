@@ -11,12 +11,11 @@ from langchain.chains.llm import LLMChain
 from langchain.agents.output_parsers import JSONAgentOutputParser
 from logger.logger import log_info, log_debug, log_error
 
-logger = logging.getLogger(__name__)
 
 class JDProcessor(OpenAIAgent):
     def __init__(self):
         # Initialize LLM
-        llm = ChatGroq(api_key="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",model="llama3-70b-8192", temperature=0)
+        llm = ChatGroq(api_key="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",model="llama3-70b-8192", temperature=0)
         
         # Setup tools
         tools = [parse_job_description_content]
@@ -110,5 +109,5 @@ class JDProcessor(OpenAIAgent):
                 }
             )
         except Exception as e:
-            logger.error(f"JD processing failed: {str(e)}")
+            log_error(f"JD processing failed: {str(e)}")
             return state

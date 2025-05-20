@@ -1,11 +1,11 @@
 import os
 import shutil
+import threading
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pathlib import Path
-import tempfile
 import uvicorn
 import uuid
 from schemas.base import AgentState
@@ -15,9 +15,13 @@ from logger.logger import LogManager, log_info, log_debug, log_error, log_warn
 import zipfile
 import io
 from fastapi.responses import StreamingResponse
-
+from datetime import datetime
+import time
 # Load environment variables
 load_dotenv()
+
+CLEANUP_INTERVAL_HOURS = int(os.getenv("CLEANUP_INTERVAL_HOURS", "24"))  # Default 24 hours
+CLEANUP_FREQUENCY = 3600
 
 # Initialize logger
 LogManager().configure(debug=True)
@@ -77,6 +81,38 @@ class JobResponse(BaseModel):
     status: str
     results: Optional[Dict[str, Any]] = None
 
+def cleanup_old_directories():
+    """Delete directories older than CLEANUP_INTERVAL_HOURS in temp and output folders"""
+    current_time = datetime.now().timestamp()
+    
+    # Clean temp directory
+    for job_dir in TEMP_DIR.iterdir():
+        if job_dir.is_dir():
+            dir_age = current_time - job_dir.stat().st_mtime
+            if dir_age > CLEANUP_INTERVAL_HOURS * 3600:
+                try:
+                    shutil.rmtree(job_dir)
+                    print(f"Cleaned temp directory: {job_dir}")
+                except Exception as e:
+                    print(f"Error cleaning {job_dir}: {str(e)}")
+
+    # Clean output directory
+    for job_dir in OUTPUT_DIR.iterdir():
+        if job_dir.is_dir():
+            dir_age = current_time - job_dir.stat().st_mtime
+            if dir_age > CLEANUP_INTERVAL_HOURS * 3600:
+                try:
+                    shutil.rmtree(job_dir)
+                    print(f"Cleaned output directory: {job_dir}")
+                except Exception as e:
+                    print(f"Error cleaning {job_dir}: {str(e)}")
+
+def run_cleanup_task():
+    """Background task to run cleanup periodically"""
+    while True:
+        cleanup_old_directories()
+        time.sleep(CLEANUP_FREQUENCY)
+
 @app.get("/")
 async def root():
     return {"message": "ATS Resume Screening API"}
@@ -85,7 +121,8 @@ async def root():
 async def upload_jd(jd_file: UploadFile = File(...)):
     """Upload a job description file"""
     job_id = str(uuid.uuid4())
-    
+    session_id = LogManager.set_session_id(job_id)
+
     # Create job directories
     job_dir = TEMP_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -99,13 +136,13 @@ async def upload_jd(jd_file: UploadFile = File(...)):
         with open(jd_path, "wb") as f:
             shutil.copyfileobj(jd_file.file, f)
         
-        log_info(f"Job description uploaded: {jd_path}")
+        log_info(f"Job description uploaded: {jd_path}", session_id= session_id)
         job_status.update_job(job_id, "jd_uploaded", {"jd_path": str(jd_path)})
         
         return {"job_id": job_id, "status": "jd_uploaded"}
     
     except Exception as e:
-        log_error(f"Failed to upload JD: {str(e)}")
+        log_error(f"Failed to upload JD: {str(e)}",session_id=session_id)
         job_status.update_job(job_id, "error", {"error": str(e)})
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -114,6 +151,8 @@ async def upload_jd(jd_file: UploadFile = File(...)):
 async def upload_resumes(job_id: str = Form(...), resumes: List[UploadFile] = File(...)):
     """Upload multiple resume files for processing"""
     job_info = job_status.get_job(job_id)
+    session_id = LogManager.set_session_id(job_id)
+
     if not job_info:
         raise HTTPException(status_code=404, detail="Job not found")
     
@@ -129,7 +168,7 @@ async def upload_resumes(job_id: str = Form(...), resumes: List[UploadFile] = Fi
                 shutil.copyfileobj(resume.file, f)
             uploaded_files.append(str(resume_path))
         
-        log_info(f"Uploaded {len(uploaded_files)} resumes for job {job_id}")
+        log_info(f"Uploaded {len(uploaded_files)} resumes for job {job_id}",session_id=session_id)
         job_info["results"] = job_info.get("results", {})
         job_info["results"]["resume_folder"] = str(resume_dir)
         job_info["results"]["resume_count"] = len(uploaded_files)
@@ -138,7 +177,7 @@ async def upload_resumes(job_id: str = Form(...), resumes: List[UploadFile] = Fi
         return {"job_id": job_id, "status": "resumes_uploaded", "results": job_info["results"]}
     
     except Exception as e:
-        log_error(f"Failed to upload resumes: {str(e)}")
+        log_error(f"Failed to upload resumes: {str(e)}",session_id=session_id)
         job_status.update_job(job_id, "error", {"error": str(e)})
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -146,6 +185,8 @@ async def upload_resumes(job_id: str = Form(...), resumes: List[UploadFile] = Fi
 async def download_qualified_resumes(job_id: str):
     """Download qualified resumes as a zip file"""
     job_info = job_status.get_job(job_id)
+    session_id = LogManager.set_session_id(job_id)
+
     
     if not job_info:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -179,7 +220,7 @@ async def download_qualified_resumes(job_id: str):
         )
     
     except Exception as e:
-        log_error(f"Failed to create zip file: {str(e)}")
+        log_error(f"Failed to create zip file: {str(e)}",session_id=session_id)
         raise HTTPException(status_code=500, detail=str(e))
 
 # Add a new endpoint for specifying a folder path instead of uploading files
@@ -187,6 +228,8 @@ async def download_qualified_resumes(job_id: str):
 async def set_resume_folder(request: FolderPathRequest):
     """Set a folder path for resumes instead of uploading files"""
     job_id = request.job_id
+    session_id = LogManager.set_session_id(job_id)
+
     folder_path = request.folder_path
     
     job_info = job_status.get_job(job_id)
@@ -204,9 +247,9 @@ async def set_resume_folder(request: FolderPathRequest):
         resume_count = len(resume_files)
         
         if resume_count == 0:
-            log_warn(f"No PDF files found in folder: {folder_path}")
+            log_warn(f"No PDF files found in folder: {folder_path}",session_id=session_id)
         
-        log_info(f"Set resume folder: {folder_path} with {resume_count} PDF files for job {job_id}")
+        log_info(f"Set resume folder: {folder_path} with {resume_count} PDF files for job {job_id}",session_id=session_id)
         
         # Update job info
         job_info["results"] = job_info.get("results", {})
@@ -217,7 +260,7 @@ async def set_resume_folder(request: FolderPathRequest):
         return {"job_id": job_id, "status": "resumes_uploaded", "results": job_info["results"]}
     
     except Exception as e:
-        log_error(f"Failed to set resume folder: {str(e)}")
+        log_error(f"Failed to set resume folder: {str(e)}",session_id=session_id)
         job_status.update_job(job_id, "error", {"error": str(e)})
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -226,6 +269,8 @@ async def set_resume_folder(request: FolderPathRequest):
 async def upload_metadata(job_id: str = Form(...), metadata_files: List[UploadFile] = File(...)):
     """Upload metadata files (optional)"""
     job_info = job_status.get_job(job_id)
+    session_id = LogManager.set_session_id(job_id)
+
     if not job_info:
         raise HTTPException(status_code=404, detail="Job not found")
     
@@ -241,7 +286,7 @@ async def upload_metadata(job_id: str = Form(...), metadata_files: List[UploadFi
                 shutil.copyfileobj(metadata.file, f)
             uploaded_files.append(str(metadata_path))
         
-        log_info(f"Uploaded {len(uploaded_files)} metadata files for job {job_id}")
+        log_info(f"Uploaded {len(uploaded_files)} metadata files for job {job_id}",session_id=session_id)
         job_info["results"] = job_info.get("results", {})
         job_info["results"]["metadata_folder"] = str(metadata_dir)
         job_status.update_job(job_id, "metadata_uploaded", job_info["results"])
@@ -249,7 +294,7 @@ async def upload_metadata(job_id: str = Form(...), metadata_files: List[UploadFi
         return {"job_id": job_id, "status": "metadata_uploaded", "results": job_info["results"]}
     
     except Exception as e:
-        log_error(f"Failed to upload metadata: {str(e)}")
+        log_error(f"Failed to upload metadata: {str(e)}",session_id=session_id)
         job_status.update_job(job_id, "error", {"error": str(e)})
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -258,9 +303,12 @@ async def upload_metadata(job_id: str = Form(...), metadata_files: List[UploadFi
 async def set_metadata_folder(request: FolderPathRequest):
     """Set a folder path for metadata instead of uploading files"""
     job_id = request.job_id
+    session_id = LogManager.set_session_id(job_id)
+
     folder_path = request.folder_path
     
     job_info = job_status.get_job(job_id)
+    
     if not job_info:
         raise HTTPException(status_code=404, detail="Job not found")
     
@@ -274,7 +322,7 @@ async def set_metadata_folder(request: FolderPathRequest):
         metadata_files = list(metadata_folder.glob("*.json"))
         metadata_count = len(metadata_files)
         
-        log_info(f"Set metadata folder: {folder_path} with {metadata_count} JSON files for job {job_id}")
+        log_info(f"Set metadata folder: {folder_path} with {metadata_count} JSON files for job {job_id}",session_id=session_id)
         
         # Update job info
         job_info["results"] = job_info.get("results", {})
@@ -284,7 +332,7 @@ async def set_metadata_folder(request: FolderPathRequest):
         return {"job_id": job_id, "status": "metadata_uploaded", "results": job_info["results"]}
     
     except Exception as e:
-        log_error(f"Failed to set metadata folder: {str(e)}")
+        log_error(f"Failed to set metadata folder: {str(e)}",session_id=session_id)
         job_status.update_job(job_id, "error", {"error": str(e)})
         raise HTTPException(status_code=500, detail=str(e))
     
@@ -292,6 +340,8 @@ async def set_metadata_folder(request: FolderPathRequest):
 async def set_output_dir(request: FolderPathRequest):
     """Set a folder path for storing filtered resumes"""
     job_id = request.job_id
+    session_id = LogManager.set_session_id(job_id)
+
     folder_path = request.folder_path
     
     job_info = job_status.get_job(job_id)
@@ -303,7 +353,7 @@ async def set_output_dir(request: FolderPathRequest):
         output_folder = Path(folder_path)
         output_folder.mkdir(parents=True, exist_ok=True)
         
-        log_info(f"Set output directory: {folder_path} for job {job_id}")
+        log_info(f"Set output directory: {folder_path} for job {job_id}",session_id=session_id)
         
         # Update job info
         job_info["results"] = job_info.get("results", {})
@@ -313,7 +363,7 @@ async def set_output_dir(request: FolderPathRequest):
         return {"job_id": job_id, "status": job_info["status"], "results": job_info["results"]}
     
     except Exception as e:
-        log_error(f"Failed to set output directory: {str(e)}")
+        log_error(f"Failed to set output directory: {str(e)}",session_id=session_id)
         job_status.update_job(job_id, "error", {"error": str(e)})
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -321,8 +371,10 @@ def process_ats_job(job_id: str, threshold: float):
     """Background task to process ATS job"""
     try:
         job_info = job_status.get_job(job_id)
+        session_id = LogManager.set_session_id(job_id)
+
         if not job_info or not job_info.get("results"):
-            log_error(f"Invalid job data for processing: {job_id}")
+            log_error(f"Invalid job data for processing: {job_id}",session_id=session_id)
             job_status.update_job(job_id, "error", {"error": "Invalid job data"})
             return
         
@@ -350,7 +402,7 @@ def process_ats_job(job_id: str, threshold: float):
             }
         )
         
-        log_info(f"Starting ATS processing for job {job_id}")
+        log_info(f"Starting ATS processing for job {job_id}",session_id=session_id)
         result = workflow.invoke(initial_state)
         
         # Update job status with results
@@ -363,16 +415,17 @@ def process_ats_job(job_id: str, threshold: float):
             "scoring_results": result.metadata.get("scoring_results", [])
         })
         
-        log_info(f"Completed ATS processing for job {job_id}")
+        log_info(f"Completed ATS processing for job {job_id}",session_id=session_id)
     
     except Exception as e:
-        log_error(f"ATS processing failed: {str(e)}")
+        log_error(f"ATS processing failed: {str(e)}",session_id=session_id)
         job_status.update_job(job_id, "error", {"error": str(e)})
 
 @app.post("/process", response_model=JobResponse)
 async def process_job(request: ProcessRequest, background_tasks: BackgroundTasks):
     """Start ATS processing job"""
     job_id = request.job_id
+
     job_info = job_status.get_job(job_id)
     
     if not job_info:
@@ -401,6 +454,14 @@ async def get_job_status(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
     
     return {"job_id": job_id, "status": job_info["status"], "results": job_info.get("results")}
+
+
+@app.on_event("startup")
+def startup_event():
+    # Start cleanup thread
+    cleanup_thread = threading.Thread(target=run_cleanup_task, daemon=True,name="CleanupThread")
+    cleanup_thread.start()
+    log_info("Cleanup task started", session_id="SYSTEM")
 
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

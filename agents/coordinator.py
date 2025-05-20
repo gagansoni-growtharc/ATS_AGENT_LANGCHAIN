@@ -10,13 +10,15 @@ from langchain.chains.llm import LLMChain
 from langchain.agents.output_parsers import JSONAgentOutputParser
 import re
 import json
+import time
+
 class Coordinator(OpenAIAgent):
     def __init__(self):
         log_info("Initializing Coordinator agent")
         try:
             # Initialize LLM with timeout
             llm = ChatGroq(
-                api_key="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",
+                api_key="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",
                 model="llama3-70b-8192", 
                 temperature=0,
                 request_timeout=30
@@ -145,36 +147,41 @@ class Coordinator(OpenAIAgent):
 
     def _calculate_score(self, resume, jd_content: str) -> float:
         """Calculate resume score using LLM evaluation"""
-        try:
-            log_debug(f"Generating score for: {resume.file_path}")
-            
-            prompt = f"""
-            JOB REQUIREMENTS:
-            {jd_content}
-            
-            RESUME CONTENT:
-            {resume.text}
-            
-            METADATA:
-            {json.dumps(resume.metadata, indent=2) if resume.metadata else "No metadata"}
-            
-            FINAL SCORE (0-100):
-            """
+        max_retries = 10
+        for attempt in range(max_retries):
+            try:
+                log_debug(f"Generating score for: {resume.file_path}, attempt: {attempt}")
+                
+                prompt = f"""
+                JOB REQUIREMENTS:
+                {jd_content}
+                
+                RESUME CONTENT:
+                {resume.text}
+                
+                METADATA:
+                {json.dumps(resume.metadata, indent=2) if resume.metadata else "No metadata"}
+                
+                FINAL SCORE (0-100):
+                """
 
-            log_debug(f"Scoring prompt:\n{prompt}...")
-            response = self._llm.invoke(prompt)
-            log_debug(f"LLM response: {response.content}...")
-            
-            score = self._parse_score_from_response(response.content)
-            log_info(f"Resume scored: {resume.file_path} - {score}/100")
-            
-            return score
+                log_debug(f"Scoring prompt:\n{prompt}...")
+                response = self._llm.invoke(prompt)
+                log_debug(f"LLM response: {response.content}...")
+                
+                score = self._parse_score_from_response(response.content)
+                log_info(f"Resume scored: {resume.file_path} - {score}/100")
+                
+                return score
 
-        except Exception as e:
-            log_error("Score calculation failed", 
-                     resume=resume.file_path,
-                     error=str(e))
-            return 0.0
+            except Exception as e:
+                log_error("Score calculation failed",
+                        attempt = attempt + 1, 
+                        resume=resume.file_path,
+                        error=str(e))
+                time.sleep(2**attempt)
+        log_error("All Scoring attempts failed {resume.file_path}")
+        return 0.0
 
     def _parse_score_from_response(self, response_text: str) -> float:
         """Enhanced score parsing with multiple fallback patterns"""

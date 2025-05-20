@@ -15,7 +15,7 @@ from langchain.agents.output_parsers import JSONAgentOutputParser
 class ResumeProcessor(OpenAIAgent):
     def __init__(self):
         # Initialize the LLM
-        llm = ChatGroq(api_key="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",model="llama3-70b-8192", temperature=0)
+        llm = ChatGroq(api_key="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",model="llama3-70b-8192", temperature=0)
 
         
         # Setup tools

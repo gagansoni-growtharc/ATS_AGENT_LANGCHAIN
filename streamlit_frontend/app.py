@@ -21,7 +21,7 @@ st.set_page_config(
 )
 
 # API endpoints - make this configurable for different environments
-API_URL = st.sidebar.text_input("API URL", value="http://localhost:8000", 
+API_URL = st.sidebar.text_input("API URL", value="http://192.168.1.45:8000", 
                                help="URL of the backend API. Change this when deploying to production.")
 
 # Session state initialization

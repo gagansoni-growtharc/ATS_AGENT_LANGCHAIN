@@ -1,23 +1,23 @@
-# logger/logger.py
 import logging
-from logging.handlers import RotatingFileHandler
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
-from pathlib import Path
+from pymongo import MongoClient
+from config.settings import get_settings
 import datetime
 import uuid
 import threading
 
-# Create logs directory if it doesn't exist
-LOG_DIR = Path("./logs")
-LOG_DIR.mkdir(parents=True, exist_ok=True)
+settings = get_settings()
+
+# Thread-local storage for session context
+_session_context = threading.local()
 
 class LogEntry(BaseModel):
     timestamp: datetime.datetime
     level: str
     message: str
     module: str
-    session_id: Optional[str] = None
+    session_id: Optional[str] = None  # Added session_id field
     metadata: Dict[str, Any] = {}
 
 class LogManager:
@@ -35,7 +35,6 @@ class LogManager:
         self._logger = logging.getLogger("ATS")
         self._logger.handlers = []
         self._logger.setLevel(logging.INFO)
-        self._logger.addFilter(SessionFilter())
 
     def configure(self, debug: bool = False):
         """Public configuration method"""
@@ -46,24 +45,20 @@ class LogManager:
         level = logging.DEBUG if debug else logging.INFO
         self._logger.setLevel(level)
         
-        # Add rotating file handler
-        self._add_file_handler(level)
+        # Add handlers
+        self._add_mongo_handler()
+        self._add_console_handler(level)
 
-    def _add_file_handler(self, level):
-        """Add rotating file handler with 10MB size limit"""
-        log_file = LOG_DIR / "ats_system.log"
-        handler = RotatingFileHandler(
-            filename=log_file,
-            maxBytes=100*1024*1024,  # 10MB
-            backupCount=2,
-            encoding='utf-8'
-        )
-        handler.setLevel(level)
-        formatter = logging.Formatter(
-            '%(asctime)s - [%(session_id)s] - %(name)s - %(levelname)s - %(message)s'
-        )
-        handler.setFormatter(formatter)
+    def _add_mongo_handler(self):
+        handler = MongoDBHandler()
         self._logger.addHandler(handler)
+
+    def _add_console_handler(self, level):
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(level)
+        formatter = logging.Formatter('%(asctime)s - [%(session_id)s] - %(name)s - %(levelname)s - %(message)s')
+        console_handler.setFormatter(formatter)
+        self._logger.addHandler(console_handler)
 
     @property
     def logger(self):
@@ -90,11 +85,36 @@ class LogManager:
         if hasattr(_session_context, 'session_id'):
             delattr(_session_context, 'session_id')
 
+class MongoDBHandler(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.client = MongoClient(settings.MONGO_URI)
+        self.collection = self.client[settings.LOG_DB_NAME][settings.LOG_COLLECTION]
+        
+    def emit(self, record):
+        try:
+            # Get session_id from record or default
+            session_id = getattr(record, "session_id", LogManager.get_session_id())
+            
+            entry = LogEntry(
+                timestamp=datetime.datetime.utcnow(),
+                level=record.levelname,
+                message=record.getMessage(),
+                module=record.module,
+                session_id=session_id,  # Include session_id in log entry
+                metadata=getattr(record, "metadata", {})
+            )
+            self.collection.insert_one(entry.model_dump())
+        except Exception as e:
+            print(f"Failed to log to MongoDB: {str(e)}")
+
+
 class SessionFilter(logging.Filter):
     """Filter that adds session_id to log records"""
     def filter(self, record):
         record.session_id = getattr(record, "session_id", LogManager.get_session_id())
         return True
+
 
 def log_with_context(level: str, message: str, session_id: str = None, **context: Dict[str, Any]):
     logger = LogManager().logger
@@ -131,6 +151,3 @@ def log_warn(message: str, session_id: str = None, **kwargs):
 
 def log_error(message: str, session_id: str = None, **kwargs):
     log_with_context("error", message, session_id, **kwargs)
-
-# Thread-local storage initialization
-_session_context = threading.local()

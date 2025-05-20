@@ -26,6 +26,11 @@ class Settings(BaseSettings):
         default="ats_logs",
         description="MongoDB collection name for logs"
     )
+    CLEANUP_INTERVAL_HOURS: int = Field(
+        default = 24,
+        description="Default files life cycle"
+    )
+
 
     model_config = SettingsConfigDict(
         env_file=".env",
